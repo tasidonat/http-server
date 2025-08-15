@@ -1,16 +1,39 @@
 import socket
+import uuid
 from utils import parse_request, build_response
 
-def handle_route(method, path, body):
+sessions = {}
+
+def get_or_create_session(headers):
+    cookies = headers.get('cookie', '')
+    session_id = None
+    if cookies:
+        for cookie in cookies.split(';'):
+            key, _, value = cookie.strip().partition('=')
+            if key == 'session_id':
+                session_id = value
+                break
+    if not session_id or session_id not in sessions:
+        session_id = str(uuid.uuid4())
+        sessions[session_id] = {'visits': 0}
+        is_new = True
+    else:
+        is_new = False
+    return session_id, is_new
+
+def handle_route(method, path, body, session):
+    session['visits'] += 1
     if path == '/':
-        return "200 OK", "Hello World!"
+        return "200 OK", f"Hello World! You have visited {session['visits']} times."
     elif path == '/about':
-        return "200 OK", "This is a minimal HTTP/1.1 server."
+        return "200 OK", f"This is a minimal HTTP/1.1 server. Session visits: {session['visits']}"
     elif path == '/data':
         if method == 'POST':
-            return "200 OK", f"Received POST data: {body}"
+            session['last_post'] = body
+            return "200 OK", f"Received POST data: {body} (Session visits: {session['visits']})"
         else:
-            return "200 OK", "Send a POST request to /data."
+            last = session.get('last_post', 'None')
+            return "200 OK", f"Send a POST request to /data. Last POST: {last} (Session visits: {session['visits']})"
     else:
         return "404 Not Found", "Not Found"
 
@@ -47,8 +70,22 @@ def main():
                         break
 
                     keep_alive = headers.get('connection', '').lower() == 'keep-alive'
-                    status, resp_body = handle_route(method, path, body)
-                    response = build_response(status, resp_body, keep_alive=keep_alive)
+
+                    session_id, is_new = get_or_create_session(headers)
+                    session = sessions[session_id]
+
+                    status, resp_body = handle_route(method, path, body, session)
+                    extra_headers = []
+                    if is_new:
+                        extra_headers.append(f"Set-Cookie: session_id={session_id}; HttpOnly; Path=/")
+
+                    response = build_response(
+                        status,
+                        resp_body,
+                        keep_alive=keep_alive,
+                        content_type='text/plain',
+                        extra_headers=extra_headers
+                    )
                     conn.sendall(response.encode('utf-8'))
 
                     if not keep_alive:

@@ -15,7 +15,7 @@ def parse_request(request_bytes):
     except Exception:
         return None, None, None, {}, ''
 
-def build_response(status, body, keep_alive=False, content_type='text/plain'):
+def build_response(status, body, keep_alive=False, content_type='text/plain', extra_headers=None):
     status_line = f"HTTP/1.1 {status}\r\n"
     headers = [
         f"Content-Type: {content_type}",
@@ -25,5 +25,7 @@ def build_response(status, body, keep_alive=False, content_type='text/plain'):
         headers.append("Connection: keep-alive")
     else:
         headers.append("Connection: close")
+    if extra_headers:
+        headers.extend(extra_headers)
     header_str = '\r\n'.join(headers)
     return f"{status_line}{header_str}\r\n\r\n{body}"
